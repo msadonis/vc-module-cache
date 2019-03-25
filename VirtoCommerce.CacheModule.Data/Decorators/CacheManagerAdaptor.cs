@@ -32,7 +32,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (_settingManager.GetValue("Cache.Enable", true))
             {
-                var result = _cacheManager.Get<T>(cacheKey, region);
+                var result = (T)_cacheManager.Get(cacheKey, region);
                 return result;
             }
             return default(T);
@@ -96,7 +96,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             var withCacheInfo = (
                 from id in ids
                 let cacheKey = cacheKeyGen(id)
-                let cached = _cacheManager.Get<T>(cacheKey, region)
+                let cached = (T)_cacheManager.Get(cacheKey, region)
                 select new
                 {
                     id,

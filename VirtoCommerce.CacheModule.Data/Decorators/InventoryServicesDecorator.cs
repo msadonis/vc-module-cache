@@ -68,49 +68,18 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (productIds == null) throw new ArgumentNullException(nameof(productIds));
 
-            // Cleanup input.
-            productIds = productIds.Where(x => x != null).ToArray();
+            var result = _cacheManager.GetMultiWithIndividualCaching<IEnumerable<InventoryInfo>>(
+                productIds.ToArray(),
+                GetProductInventoryCacheKey,
+                RegionName,
+                id => GetProductInventoryInfos(id),
+                ids => _inventoryService.GetProductsInventoryInfos(ids)
+                    .GroupBy(x => x.ProductId, StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                x => x.FirstOrDefault()?.ProductId
+            );
 
-            // Limit garbage genration of single parameter access.
-            if (productIds.Count() == 1)
-            {
-                return GetProductInventoryInfos(productIds.First());
-            }
-
-            // Read cached products into a dictionary.
-            var withCacheInfo = (
-                from productId in productIds
-                let cacheKey = GetProductInventoryCacheKey(productId)
-                let cached = _cacheManager.Get<InventoryInfo>(cacheKey, RegionName)
-                select new
-                {
-                    productId,
-                    cacheKey,
-                    cached
-                }
-            ).ToDictionary(x => x.productId, x => x, StringComparer.OrdinalIgnoreCase);
-
-            // Read all uncached inventory in one go from inner service.
-            var uncached = withCacheInfo.Values.Where(x => x.cached == null).Select(x => x.productId).ToArray();
-            if (uncached.Length > 0)
-            {
-                var fetched = _inventoryService.GetProductsInventoryInfos(uncached);
-                foreach (var fetchedInfo in fetched)
-                {
-                    var cacheKey = GetProductInventoryCacheKey(fetchedInfo.ProductId);
-                    _cacheManager.Put(cacheKey, fetchedInfo, RegionName);
-
-                    withCacheInfo[fetchedInfo.ProductId] = new
-                    {
-                        productId = fetchedInfo.ProductId,
-                        cacheKey,
-                        cached = fetchedInfo
-                    };
-                }
-            }
-
-            // Return in same sequence as input.
-            return productIds.Select(x => withCacheInfo[x].cached).Where(x => x != null).ToArray();
+            return result.SelectMany(x => x);
         }
 
         private IEnumerable<InventoryInfo> GetProductInventoryInfos(string productId)

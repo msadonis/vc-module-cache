@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using VirtoCommerce.Domain.Catalog.Model;
@@ -13,7 +15,10 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         private readonly ICategoryService _categoryService;
         private readonly ICatalogService _catalogService;
         private readonly CacheManagerAdaptor _cacheManager;
+
+        // Use multiple cache regions so that we don't have to clear the entire cache region on every update.
         public const string RegionName = "Catalog-Cache-Region";
+        public const string AggregatedRegionName = "Catalog-Aggregated-Cache-Region";
 
         public CatalogServicesDecorator(IItemService itemService, ICatalogSearchService searchService, IPropertyService propertyService, ICategoryService categoryService, ICatalogService catalogService, CacheManagerAdaptor cacheManager)
         {
@@ -29,6 +34,16 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         public void ClearCache()
         {
             _cacheManager.ClearRegion(RegionName);
+            _cacheManager.ClearRegion(AggregatedRegionName);
+        }
+
+        public void ClearCacheForProduct(string productId)
+        {
+            if (productId == null) return;
+
+            var cacheKey = GetProductCacheKey(productId);
+            _cacheManager.Remove(cacheKey, RegionName);
+            _cacheManager.ClearRegion(AggregatedRegionName);
         }
         #endregion
 
@@ -36,40 +51,61 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         public void Create(CatalogProduct[] items)
         {
             _itemService.Create(items);
-            ClearCache();
+            foreach (var item in items)
+            {
+                ClearCacheForProduct(item?.Id);
+            }
         }
 
         public CatalogProduct Create(CatalogProduct item)
         {
             var retVal = _itemService.Create(item);
-            ClearCache();
+            ClearCacheForProduct(item?.Id);
             return retVal;
         }
 
         public void Delete(string[] itemIds)
         {
             _itemService.Delete(itemIds);
-            ClearCache();
+            foreach (var itemId in itemIds)
+            {
+                ClearCacheForProduct(itemId);
+            }
         }
 
         public CatalogProduct GetById(string itemId, ItemResponseGroup respGroup, string catalogId = null)
         {
-            var cacheKey = GetCacheKey("ItemService.GetById", itemId, respGroup.ToString(), catalogId);
-            var retVal = _cacheManager.Get(cacheKey, RegionName, () => _itemService.GetById(itemId, respGroup, catalogId));
-            return retVal;
+            var cacheKey = GetProductCacheKey(itemId);
+            var cacheEntry = _cacheManager.Get(cacheKey, RegionName, () => new ProductCacheEntry(itemId));
+            return cacheEntry.Get(respGroup, catalogId, () => _itemService.GetById(itemId, respGroup, catalogId));
         }
 
         public CatalogProduct[] GetByIds(string[] itemIds, ItemResponseGroup respGroup, string catalogId = null)
         {
-            var cacheKey = GetCacheKey("ItemService.GetByIds", string.Join(", ", itemIds), respGroup.ToString(), catalogId);
-            var retVal = _cacheManager.Get(cacheKey, RegionName, () => _itemService.GetByIds(itemIds, respGroup, catalogId));
-            return retVal;
+            var cacheEntries = _cacheManager.GetMultiWithIndividualCaching(
+                itemIds,
+                GetProductCacheKey,
+                RegionName,
+                id => new ProductCacheEntry(id, respGroup, catalogId, _itemService.GetById(id, respGroup, catalogId)),
+                ids => _itemService.GetByIds(ids, respGroup, catalogId)
+                    .Select(x => new ProductCacheEntry(x.Id, respGroup, catalogId, x))
+                    .ToArray(),
+                x => x.ItemId
+            );
+
+            return cacheEntries
+                .Select(x => x.Get(respGroup, catalogId))
+                .Where(x => x != null)
+                .ToArray();
         }
 
         public void Update(CatalogProduct[] items)
         {
             _itemService.Update(items);
-            ClearCache();
+            foreach (var item in items)
+            {
+                ClearCacheForProduct(item?.Id);
+            }
         }
         #endregion
 
@@ -77,7 +113,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         public SearchResult Search(SearchCriteria criteria)
         {
             var cacheKey = GetCacheKey("CatalogSearchService.Search", criteria.GetCacheKey());
-            var retVal = _cacheManager.Get(cacheKey, RegionName, () => _searchService.Search(criteria));
+            var retVal = _cacheManager.Get(cacheKey, AggregatedRegionName, () => _searchService.Search(criteria));
             return retVal;
         }
         #endregion
@@ -214,9 +250,70 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         }
         #endregion
 
+
         private static string GetCacheKey(params string[] parameters)
         {
             return "Catalog-" + string.Join(", ", parameters);
+        }
+
+        private static string GetProductCacheKey(string productId)
+        {
+            return $"Catalog-ItemService.GetById,{productId.ToLowerInvariant()}";
+        }
+
+        /// <summary>
+        /// Cache entry to store different requested versions of same product.
+        /// </summary>
+        private class ProductCacheEntry
+        {
+            private readonly ConcurrentDictionary<string, CatalogProduct> Products
+                = new ConcurrentDictionary<string, CatalogProduct>(StringComparer.OrdinalIgnoreCase);
+            private readonly ConcurrentDictionary<string, object> Locks
+                = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+            public string ItemId { get; }
+
+            public ProductCacheEntry(string itemId)
+            {
+                ItemId = itemId;
+            }
+
+            /// <summary>
+            /// Create cache entry with initial version for cache entry.
+            /// </summary>
+            public ProductCacheEntry(string itemId, ItemResponseGroup respGroup, string catalogId, CatalogProduct product)
+                : this(itemId)
+            {
+                var versionKey = GetVersionKey(respGroup, catalogId);
+                Products[versionKey] = product;
+            }
+
+            public CatalogProduct Get(ItemResponseGroup respGroup, string catalogId)
+            {
+                var versionKey = GetVersionKey(respGroup, catalogId);
+                return Products.TryGetValue(versionKey, out var value)
+                    ? value
+                    : null;
+            }
+
+            public CatalogProduct Get(ItemResponseGroup respGroup, string catalogId, Func<CatalogProduct> getValueFunction)
+            {
+                var versionKey = GetVersionKey(respGroup, catalogId);
+                return Products.GetOrAdd(versionKey, k =>
+                {
+                    lock (Locks.GetOrAdd(versionKey, x => new object()))
+                    {
+                        return Products.TryGetValue(versionKey, out var value)
+                            ? value
+                            : getValueFunction();
+                    }
+                });
+            }
+
+            private string GetVersionKey(ItemResponseGroup respGroup, string catalogId)
+            {
+                return string.Join(",", ItemId, respGroup.ToString(), catalogId ?? "null");
+            }
         }
     }
 }

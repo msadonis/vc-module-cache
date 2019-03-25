@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CacheManager.Core;
 using VirtoCommerce.Platform.Core.Settings;
 using VirtoCommerce.Platform.Data.Common;
@@ -25,6 +25,32 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
                 return result;
             }
             return getValueFunction();
+        }
+
+        public T Get<T>(string cacheKey, string region)
+        {
+            if (_settingManager.GetValue("Cache.Enable", true))
+            {
+                var result = _cacheManager.Get<T>(cacheKey, region);
+                return result;
+            }
+            return default(T);
+        }
+
+        public void Put<T>(string cacheKey, T value, string region)
+        {
+            if (_settingManager.GetValue("Cache.Enable", true))
+            {
+                _cacheManager.Put(cacheKey, value, region);
+            }
+        }
+
+        public void Remove(string cacheKey, string region)
+        {
+            if (_settingManager.GetValue("Cache.Enable", true))
+            {
+                _cacheManager.Remove(cacheKey, region);
+            }
         }
 
         public void ClearRegion(string region)

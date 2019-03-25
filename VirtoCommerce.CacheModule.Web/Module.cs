@@ -84,6 +84,7 @@ namespace VirtoCommerce.CacheModule.Web
                 MemberServicesDecorator.RegionName,
                 MarketingServicesDecorator.RegionName,
                 InventoryServicesDecorator.RegionName,
+                InventoryServicesDecorator.AggregatedRegionName,
                 PricingServicesDecorator.RegionName
             };
 

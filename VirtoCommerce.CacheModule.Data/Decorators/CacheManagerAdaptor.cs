@@ -21,7 +21,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (_settingManager.GetValue("Cache.Enable", true))
             {
-                var expirationTimeout = _settingManager.GetValue("Cache.ExpirationTimeout", 609999);
+                var expirationTimeout = _settingManager.GetValue("Cache.ExpirationTimeout", 60);
                 var result = _cacheManager.Get(cacheKey, region, TimeSpan.FromSeconds(expirationTimeout), getValueFunction);
                 return result;
             }
@@ -32,6 +32,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (_settingManager.GetValue("Cache.Enable", true))
             {
+                // Don't use generic get method, because it can require the objects to be IConvertible. 
                 var result = (T)_cacheManager.Get(cacheKey, region);
                 return result;
             }
@@ -96,6 +97,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             var withCacheInfo = (
                 from id in ids
                 let cacheKey = cacheKeyGen(id)
+                // Don't use generic get method, because it can require the objects to be IConvertible. 
                 let cached = (T)_cacheManager.Get(cacheKey, region)
                 select new
                 {

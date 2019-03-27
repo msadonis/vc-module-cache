@@ -49,26 +49,38 @@ namespace VirtoCommerce.CacheModule.Web
         {
             var cacheManagerAdaptor = _container.Resolve<CacheManagerAdaptor>();
 
-            var storeServiceDecorator = CreateStoreServicesDecorator(cacheManagerAdaptor);
+            var storeServiceDecorator = ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Stores.Enabled", true)
+                ? CreateStoreServicesDecorator(cacheManagerAdaptor)
+                : null;
 
-            var catalogServicesDecorator = CreateCatalogServicesDecorator(cacheManagerAdaptor);
+            var catalogServicesDecorator = ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Catalog.Enabled", true)
+                ? CreateCatalogServicesDecorator(cacheManagerAdaptor)
+                : null;
 
-            if (storeServiceDecorator != null && catalogServicesDecorator != null)
+            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Commerce.Enabled", true)
+                && storeServiceDecorator != null && catalogServicesDecorator != null)
                 CreateCommerceServiceDecorator(storeServiceDecorator, catalogServicesDecorator);
 
-            RegisterMemberServicesDecorators(cacheManagerAdaptor);
+            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Members.Enabled", true))
+                RegisterMemberServicesDecorators(cacheManagerAdaptor);
 
-            RegisterMarketingServicesDecorators(cacheManagerAdaptor);
+            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Marketing.Enabled", true))
+                RegisterMarketingServicesDecorators(cacheManagerAdaptor);
 
-            RegisterInventoryServicesDecorators(cacheManagerAdaptor);
+            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Inventory.Enabled", true))
+                RegisterInventoryServicesDecorators(cacheManagerAdaptor);
 
-            RegisterPricingServicesDecorators(cacheManagerAdaptor);
+            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Pricing.Enabled", true))
+                RegisterPricingServicesDecorators(cacheManagerAdaptor);
 
-            RegisterChangesTrackingService();
+            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.ChangeTracking.Enabled", true))
+            {
+                RegisterChangesTrackingService();
 
-            var eventHandlerRegistrar = _container.Resolve<IHandlerRegistrar>();
-            //Clear Members cache region in response to a security account changes 
-            eventHandlerRegistrar.RegisterHandler<UserChangedEvent>(async (message, token) => await _container.Resolve<ResetMembersCacheSecurityEventHandler>().Handle(message));
+                var eventHandlerRegistrar = _container.Resolve<IHandlerRegistrar>();
+                //Clear Members cache region in response to a security account changes 
+                eventHandlerRegistrar.RegisterHandler<UserChangedEvent>(async (message, token) => await _container.Resolve<ResetMembersCacheSecurityEventHandler>().Handle(message));
+            }
         }
 
         private void RegisterChangesTrackingService()

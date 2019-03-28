@@ -93,11 +93,9 @@ namespace VirtoCommerce.CacheModule.Web
             var observedRegions = new[] {
                 StoreServicesDecorator.RegionName,
                 CatalogServicesDecorator.RegionName,
-                CatalogServicesDecorator.AggregatedRegionName,
                 MemberServicesDecorator.RegionName,
                 MarketingServicesDecorator.RegionName,
                 InventoryServicesDecorator.RegionName,
-                InventoryServicesDecorator.AggregatedRegionName,
                 PricingServicesDecorator.RegionName
             };
 

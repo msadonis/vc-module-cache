@@ -15,8 +15,9 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         private readonly IInventorySearchService _inventorySearchService;
 
         // Use multiple cache regions so that we don't have to clear the entire cache region on every update.
+        // Use original name to stay backwards compatible with the changes tracker service.
         public const string RegionName = "Inventory-Cache-Region";
-        public const string AggregatedRegionName = "Inventory-Aggregated-Cache-Region";
+        public const string IndividualRegionName = "Inventory-Individual-Cache-Region";
 
         public InventoryServicesDecorator(IInventoryService inventoryService, IInventorySearchService inventorySearchService, CacheManagerAdaptor cacheManager)
         {
@@ -28,8 +29,8 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         #region ICachedServiceDecorator
         public void ClearCache()
         {
+            _cacheManager.ClearRegion(IndividualRegionName);
             _cacheManager.ClearRegion(RegionName);
-            _cacheManager.ClearRegion(AggregatedRegionName);
         }
 
         public void ClearCacheForProduct(string productId)
@@ -37,8 +38,8 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             if (productId == null) return;
 
             var cacheKey = GetProductInventoryCacheKey(productId);
-            _cacheManager.Remove(cacheKey, RegionName);
-            _cacheManager.ClearRegion(AggregatedRegionName);
+            _cacheManager.Remove(cacheKey, IndividualRegionName);
+            _cacheManager.ClearRegion(RegionName);
         }
         #endregion
 
@@ -47,7 +48,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         public GenericSearchResult<InventoryInfo> SearchInventories(InventorySearchCriteria criteria)
         {
             var cacheKey = GetCacheKey("IInventorySearchService.SearchInventories", criteria.GetCacheKey());
-            var retVal = _cacheManager.Get(cacheKey, AggregatedRegionName, () => _inventorySearchService.SearchInventories(criteria));
+            var retVal = _cacheManager.Get(cacheKey, RegionName, () => _inventorySearchService.SearchInventories(criteria));
             return retVal;
         }
         #endregion
@@ -59,7 +60,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             foreach (var inventoryInfo in retVal)
             {
                 var cacheKey = GetProductInventoryCacheKey(inventoryInfo.ProductId);
-                _cacheManager.Put(cacheKey, inventoryInfo, RegionName);
+                _cacheManager.Put(cacheKey, inventoryInfo, IndividualRegionName);
             }
             return retVal;
         }
@@ -71,7 +72,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             var result = _cacheManager.GetMultiWithIndividualCaching<IEnumerable<InventoryInfo>>(
                 productIds.ToArray(),
                 GetProductInventoryCacheKey,
-                RegionName,
+                IndividualRegionName,
                 id => GetProductInventoryInfos(id),
                 ids => _inventoryService.GetProductsInventoryInfos(ids)
                     .GroupBy(x => x.ProductId, StringComparer.OrdinalIgnoreCase)
@@ -87,7 +88,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             if (productId == null) throw new ArgumentNullException(nameof(productId));
 
             var cacheKey = GetProductInventoryCacheKey(productId);
-            var retVal = _cacheManager.Get(cacheKey, RegionName, () =>
+            var retVal = _cacheManager.Get(cacheKey, IndividualRegionName, () =>
                 _inventoryService.GetProductsInventoryInfos(new[] { productId }));
             return retVal;
         }

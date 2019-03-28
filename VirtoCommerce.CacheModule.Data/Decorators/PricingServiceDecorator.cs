@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using VirtoCommerce.Domain.Pricing.Model;
 using VirtoCommerce.Domain.Pricing.Services;
 
@@ -8,7 +9,11 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
     {
         private readonly CacheManagerAdaptor _cacheManager;
         private readonly IPricingService _pricingService;
+
+        // Use multiple cache regions so that we don't have to clear the entire cache region on every update.
+        // Use original name to stay backwards compatible with the changes tracker service.
         public const string RegionName = "Pricing-Cache-Region";
+        public const string IndividualRegionName = "Pricing-Individual-Cache-Region";
 
         public PricingServicesDecorator(IPricingService inventoryService, CacheManagerAdaptor cacheManager)
         {
@@ -19,6 +24,16 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         #region ICachedServiceDecorator
         public void ClearCache()
         {
+            _cacheManager.ClearRegion(IndividualRegionName);
+            _cacheManager.ClearRegion(RegionName);
+        }
+
+        public void ClearCacheForPrice(string priceId)
+        {
+            if (priceId == null) return;
+
+            var cacheKey = GetPriceCacheKey(priceId);
+            _cacheManager.Remove(cacheKey, IndividualRegionName);
             _cacheManager.ClearRegion(RegionName);
         }
         #endregion
@@ -26,9 +41,14 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         #region IPricingService Members
         public Price[] GetPricesById(string[] ids)
         {
-            var cacheKey = GetCacheKey("IPricingService.GetPricesById", string.Join(", ", ids));
-            var retVal = _cacheManager.Get(cacheKey, RegionName, () => _pricingService.GetPricesById(ids));
-            return retVal;
+            return _cacheManager.GetMultiWithIndividualCaching(
+                ids,
+                GetPriceCacheKey,
+                IndividualRegionName,
+                pid => _pricingService.GetPricesById(new [] {pid}).FirstOrDefault(),
+                pids => _pricingService.GetPricesById(pids),
+                x => x.Id
+            );
         }
 
         public Pricelist[] GetPricelistsById(string[] ids)
@@ -48,7 +68,10 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         public void SavePrices(Price[] prices)
         {
             _pricingService.SavePrices(prices);
-            ClearCache();
+            foreach (var price in prices)
+            {
+                ClearCacheForPrice(price?.Id);
+            }
         }
 
         public void SavePricelists(Pricelist[] priceLists)
@@ -73,6 +96,10 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             _pricingService.DeletePrices(ids);
             ClearCache();
+            foreach (var id in ids)
+            {
+                ClearCacheForPrice(id);
+            }
         }
 
         public void DeletePricelistsAssignments(string[] ids)
@@ -98,6 +125,9 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             return "Pricing-" + string.Join(", ", parameters);
         }
 
-
+        private static string GetPriceCacheKey(string priceId)
+        {
+            return $"Pricing-IPricingService.GetPriceById,{priceId.ToLowerInvariant()}";
+        }
     }
 }

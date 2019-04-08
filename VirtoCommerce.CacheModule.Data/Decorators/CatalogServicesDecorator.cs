@@ -7,7 +7,7 @@ using VirtoCommerce.Domain.Catalog.Services;
 
 namespace VirtoCommerce.CacheModule.Data.Decorators
 {
-    public sealed class CatalogServicesDecorator : ICachedServiceDecorator, IItemService, ICatalogSearchService, IPropertyService, ICategoryService, ICatalogService
+    public sealed class CatalogServicesDecorator : ICachedServiceDecorator, IItemService, IPropertyService, ICategoryService, ICatalogService
     {
         private readonly IItemService _itemService;
         private readonly ICatalogSearchService _searchService;
@@ -16,10 +16,11 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         private readonly ICatalogService _catalogService;
         private readonly CacheManagerAdaptor _cacheManager;
 
-        // Use multiple cache regions so that we don't have to clear the entire cache region on every update.
+        // Use multiple cache regions so that we can limit cache clears on product updates.
+        // Disable caching results of search service so that we don't have to evict an entire cache region on product updates.
         // Use original name to stay backwards compatible with the changes tracker service.
         public const string RegionName = "Catalog-Cache-Region";
-        public const string IndividualRegionName = "Catalog-Individual-Cache-Region";
+        public const string IndividualProductRegionName = "Catalog-Individual-Cache-Region";
 
         public CatalogServicesDecorator(IItemService itemService, ICatalogSearchService searchService, IPropertyService propertyService, ICategoryService categoryService, ICatalogService catalogService, CacheManagerAdaptor cacheManager)
         {
@@ -34,7 +35,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         #region ICachedServiceDecorator
         public void ClearCache()
         {
-            _cacheManager.ClearRegion(IndividualRegionName);
+            _cacheManager.ClearRegion(IndividualProductRegionName);
             _cacheManager.ClearRegion(RegionName);
         }
 
@@ -43,8 +44,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             if (productId == null) return;
 
             var cacheKey = GetProductCacheKey(productId);
-            _cacheManager.Remove(cacheKey, IndividualRegionName);
-            _cacheManager.ClearRegion(RegionName);
+            _cacheManager.Remove(cacheKey, IndividualProductRegionName);
         }
         #endregion
 
@@ -77,7 +77,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         public CatalogProduct GetById(string itemId, ItemResponseGroup respGroup, string catalogId = null)
         {
             var cacheKey = GetProductCacheKey(itemId);
-            var cacheEntry = _cacheManager.Get(cacheKey, IndividualRegionName, () => new ProductCacheEntry(itemId));
+            var cacheEntry = _cacheManager.Get(cacheKey, IndividualProductRegionName, () => new ProductCacheEntry(itemId));
             return cacheEntry.Get(respGroup, catalogId, () => _itemService.GetById(itemId, respGroup, catalogId));
         }
 
@@ -86,7 +86,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             var cacheEntries = _cacheManager.GetMultiWithIndividualCaching(
                 itemIds,
                 GetProductCacheKey,
-                IndividualRegionName,
+                IndividualProductRegionName,
                 id => new ProductCacheEntry(id, respGroup, catalogId, _itemService.GetById(id, respGroup, catalogId)),
                 ids => _itemService.GetByIds(ids, respGroup, catalogId)
                     .Select(x => new ProductCacheEntry(x.Id, respGroup, catalogId, x))
@@ -107,15 +107,6 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             {
                 ClearCacheForProduct(item?.Id);
             }
-        }
-        #endregion
-
-        #region ICatalogSearchService members
-        public SearchResult Search(SearchCriteria criteria)
-        {
-            var cacheKey = GetCacheKey("CatalogSearchService.Search", criteria.GetCacheKey());
-            var retVal = _cacheManager.Get(cacheKey, RegionName, () => _searchService.Search(criteria));
-            return retVal;
         }
         #endregion
 
@@ -250,8 +241,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             ClearCache();
         }
         #endregion
-
-
+        
         private static string GetCacheKey(params string[] parameters)
         {
             return "Catalog-" + string.Join(", ", parameters);

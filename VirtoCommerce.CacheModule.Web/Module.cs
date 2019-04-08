@@ -53,25 +53,15 @@ namespace VirtoCommerce.CacheModule.Web
                 ? CreateStoreServicesDecorator(cacheManagerAdaptor)
                 : null;
 
-            var catalogServicesDecorator = ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Catalog.Enabled", true)
-                ? CreateCatalogServicesDecorator(cacheManagerAdaptor)
-                : null;
+            var catalogServicesDecorator = CreateCatalogServicesDecorator(cacheManagerAdaptor);
 
-            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Commerce.Enabled", true)
-                && storeServiceDecorator != null && catalogServicesDecorator != null)
+            if (storeServiceDecorator != null && catalogServicesDecorator != null)
                 CreateCommerceServiceDecorator(storeServiceDecorator, catalogServicesDecorator);
 
-            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Members.Enabled", true))
-                RegisterMemberServicesDecorators(cacheManagerAdaptor);
-
-            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Marketing.Enabled", true))
-                RegisterMarketingServicesDecorators(cacheManagerAdaptor);
-
-            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Inventory.Enabled", true))
-                RegisterInventoryServicesDecorators(cacheManagerAdaptor);
-
-            if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Pricing.Enabled", true))
-                RegisterPricingServicesDecorators(cacheManagerAdaptor);
+            RegisterMemberServicesDecorators(cacheManagerAdaptor);
+            RegisterMarketingServicesDecorators(cacheManagerAdaptor);
+            RegisterInventoryServicesDecorators(cacheManagerAdaptor);
+            RegisterPricingServicesDecorators(cacheManagerAdaptor);
 
             if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.ChangeTracking.Enabled", true))
             {
@@ -132,7 +122,8 @@ namespace VirtoCommerce.CacheModule.Web
 
         private void RegisterInventoryServicesDecorators(CacheManagerAdaptor cacheManagerAdaptor)
         {
-            if (_container.IsRegistered<IInventoryService>())
+            if (_container.IsRegistered<IInventoryService>() &&
+                ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Inventory.Enabled", true))
             {
                 var inventoryServicesDecorator = new InventoryServicesDecorator(_container.Resolve<IInventoryService>(), _container.Resolve<IInventorySearchService>(), cacheManagerAdaptor);
                 _container.RegisterInstance<IInventoryService>(inventoryServicesDecorator);
@@ -145,7 +136,8 @@ namespace VirtoCommerce.CacheModule.Web
             if (_container.IsRegistered<IDynamicContentService>() &&
                 _container.IsRegistered<IPromotionSearchService>() &&
                 _container.IsRegistered<IPromotionService>() &&
-                _container.IsRegistered<ICouponService>())
+                _container.IsRegistered<ICouponService>() &&
+                ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Marketing.Enabled", true))
             {
                 var marketingServicesDecorator = new MarketingServicesDecorator(cacheManagerAdaptor, _container.Resolve<IDynamicContentService>(), _container.Resolve<IPromotionSearchService>(), _container.Resolve<IPromotionService>(), _container.Resolve<ICouponService>());
                 _container.RegisterInstance<IDynamicContentService>(marketingServicesDecorator);
@@ -157,7 +149,8 @@ namespace VirtoCommerce.CacheModule.Web
 
         private void CreateCommerceServiceDecorator(StoreServicesDecorator storeServiceDecorator, CatalogServicesDecorator catalogServicesDecorator)
         {
-            if (_container.IsRegistered<ICommerceService>())
+            if (_container.IsRegistered<ICommerceService>() &&
+                ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Commerce.Enabled", true))
             {
                 var commerceServicesDecorator = new CommerceServiceDecorator(_container.Resolve<ICommerceService>(), new ICachedServiceDecorator[] { catalogServicesDecorator, storeServiceDecorator });
                 _container.RegisterInstance<ICommerceService>(commerceServicesDecorator);
@@ -167,7 +160,8 @@ namespace VirtoCommerce.CacheModule.Web
         private void RegisterMemberServicesDecorators(CacheManagerAdaptor cacheManagerAdaptor)
         {
             if (_container.IsRegistered<IMemberService>() &&
-                _container.IsRegistered<IMemberSearchService>())
+                _container.IsRegistered<IMemberSearchService>() &&
+                ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Members.Enabled", true))
             {
                 var memberServicesDecorator = new MemberServicesDecorator(_container.Resolve<IMemberService>(), _container.Resolve<IMemberSearchService>(), cacheManagerAdaptor);
                 _container.RegisterInstance<IMemberService>(memberServicesDecorator);
@@ -178,17 +172,24 @@ namespace VirtoCommerce.CacheModule.Web
         private CatalogServicesDecorator CreateCatalogServicesDecorator(CacheManagerAdaptor cacheManagerAdaptor)
         {
             if (_container.IsRegistered<IItemService>() &&
-                _container.IsRegistered<ICatalogSearchService>() &&
                 _container.IsRegistered<IPropertyService>() &&
                 _container.IsRegistered<ICategoryService>() &&
                 _container.IsRegistered<ICatalogService>())
             {
                 var catalogServicesDecorator = new CatalogServicesDecorator(_container.Resolve<IItemService>(), _container.Resolve<ICatalogSearchService>(), _container.Resolve<IPropertyService>(), _container.Resolve<ICategoryService>(), _container.Resolve<ICatalogService>(), cacheManagerAdaptor);
-                _container.RegisterInstance<IItemService>(catalogServicesDecorator);
-                _container.RegisterInstance<ICatalogSearchService>(catalogServicesDecorator);
-                _container.RegisterInstance<IPropertyService>(catalogServicesDecorator);
-                _container.RegisterInstance<ICategoryService>(catalogServicesDecorator);
-                _container.RegisterInstance<ICatalogService>(catalogServicesDecorator);
+
+                if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.CatalogProduct.Enabled", true))
+                    _container.RegisterInstance<IItemService>(catalogServicesDecorator);
+
+                if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.CatalogProperty.Enabled", true))
+                    _container.RegisterInstance<IPropertyService>(catalogServicesDecorator);
+
+                if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.CatalogCategory.Enabled", true))
+                    _container.RegisterInstance<ICategoryService>(catalogServicesDecorator);
+
+                if (ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Catalog.Enabled", true))
+                    _container.RegisterInstance<ICatalogService>(catalogServicesDecorator);
+
                 return catalogServicesDecorator;
             }
 
@@ -208,7 +209,8 @@ namespace VirtoCommerce.CacheModule.Web
 
         private void RegisterPricingServicesDecorators(CacheManagerAdaptor cacheManagerAdaptor)
         {
-            if (_container.IsRegistered<IPricingService>())
+            if (_container.IsRegistered<IPricingService>() &&
+                ConfigurationHelper.GetAppSettingsValue("VirtoCommerce:Cache.Pricing.Enabled", true))
             {
                 var pricingServiceDecorator = new PricingServicesDecorator(_container.Resolve<IPricingService>(), cacheManagerAdaptor);
                 _container.RegisterInstance<IPricingService>(pricingServiceDecorator);

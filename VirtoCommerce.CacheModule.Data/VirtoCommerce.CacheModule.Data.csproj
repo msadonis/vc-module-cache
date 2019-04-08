@@ -102,6 +102,7 @@
     <Compile Include="Repositories\ICacheRepository.cs" />
     <Compile Include="Services\ChangesTrackingService.cs" />
     <Compile Include="Services\IChangesTrackingService.cs" />
+    <Compile Include="Switcher.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

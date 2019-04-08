@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using CacheManager.Core;
+using VirtoCommerce.CacheModule.Common;
 using VirtoCommerce.Platform.Core.Settings;
 using VirtoCommerce.Platform.Data.Common;
 
@@ -21,16 +22,28 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (_settingManager.GetValue("Cache.Enable", true))
             {
-                var expirationTimeout = _settingManager.GetValue("Cache.ExpirationTimeout", 60);
-                var result = _cacheManager.Get(cacheKey, region, TimeSpan.FromSeconds(expirationTimeout), getValueFunction);
-                return result;
+                if (CacheSkipper.CurrentValue.SkipCacheRead && !CacheSkipper.CurrentValue.SkipCacheWrite)
+                {
+                    var result = getValueFunction();
+                    Put(cacheKey, result, region);
+                    return result;
+                }
+                else if (!CacheSkipper.CurrentValue.SkipCacheRead && CacheSkipper.CurrentValue.SkipCacheWrite)
+                {
+                    var item = _cacheManager.GetCacheItem(cacheKey, region);
+                    return item != null ? (T)item.Value : getValueFunction();
+                }
+                else
+                {
+                    return _cacheManager.Get(cacheKey, region, GetExpirationTimeout(), getValueFunction);
+                }
             }
             return getValueFunction();
         }
 
         public T Get<T>(string cacheKey, string region)
         {
-            if (_settingManager.GetValue("Cache.Enable", true))
+            if (_settingManager.GetValue("Cache.Enable", true) && !CacheSkipper.CurrentValue.SkipCacheRead)
             {
                 // Don't use generic get method, because it can require the objects to be IConvertible. 
                 var result = (T)_cacheManager.Get(cacheKey, region);
@@ -41,8 +54,9 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
 
         public void Put<T>(string cacheKey, T value, string region)
         {
-            if (_settingManager.GetValue("Cache.Enable", true))
+            if (_settingManager.GetValue("Cache.Enable", true) && !CacheSkipper.CurrentValue.SkipCacheWrite)
             {
+                var item = new CacheItem<object>(cacheKey, region, value, GetExpirationMode(), GetExpirationTimeout());
                 _cacheManager.Put(cacheKey, value, region);
             }
         }
@@ -76,6 +90,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         /// <returns>Cached or newly read batch of entries.</returns>
         public T[] GetMultiWithIndividualCaching<T>(string[] ids, Func<string, string> cacheKeyGen, string region,
             Func<string, T> singleReader, Func<string[], T[]> multiReader, Func<T, string> idReader)
+            where T : class
         {
             if (!_settingManager.GetValue("Cache.Enable", true))
             {
@@ -98,7 +113,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
                 from id in ids
                 let cacheKey = cacheKeyGen(id)
                 // Don't use generic get method, because it can require the objects to be IConvertible. 
-                let cached = (T)_cacheManager.Get(cacheKey, region)
+                let cached = CacheSkipper.CurrentValue.SkipCacheRead ? null : (T)_cacheManager.Get(cacheKey, region)
                 select new
                 {
                     id,
@@ -120,7 +135,8 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
                     if (id == null) continue;
 
                     var cacheKey = cacheKeyGen(id);
-                    _cacheManager.Put(cacheKey, fetchedInfo, region);
+                    if (!CacheSkipper.CurrentValue.SkipCacheWrite)
+                        _cacheManager.Put(new CacheItem<object>(cacheKey, region, fetchedInfo, GetExpirationMode(), GetExpirationTimeout()));
 
                     withCacheInfo[id] = new
                     {
@@ -133,6 +149,16 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
 
             // Return in same sequence as input.
             return ids.Select(x => withCacheInfo[x].cached).Where(x => x != null).ToArray();
+        }
+
+        private TimeSpan GetExpirationTimeout()
+        {
+            return TimeSpan.FromSeconds(_settingManager.GetValue("Cache.ExpirationTimeout", 60));
+        }
+
+        private ExpirationMode GetExpirationMode()
+        {
+            return ExpirationMode.Sliding;
         }
     }
 }

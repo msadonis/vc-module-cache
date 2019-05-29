@@ -65,7 +65,16 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (_settingManager.GetValue("Cache.Enable", true))
             {
-                _cacheManager.Remove(cacheKey, region);
+                var entryRemoved = _cacheManager.Remove(cacheKey, region);
+                // This filthy hack ensures that entries are cleared from cache in a distributed environment even when
+                // they were not in the (local) in-memory cache.
+                if (!entryRemoved)
+                {
+                    if (region == null)
+                        ((BaseCacheManager<object>)_cacheManager).Backplane.NotifyRemove(cacheKey);
+                    else
+                        ((BaseCacheManager<object>)_cacheManager).Backplane.NotifyRemove(cacheKey, region);
+                }
             }
         }
 

@@ -68,7 +68,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
                 var entryRemoved = _cacheManager.Remove(cacheKey, region);
                 // This filthy hack ensures that entries are cleared from cache in a distributed environment even when
                 // they were not in the (local) in-memory cache.
-                if (!entryRemoved)
+                if (!entryRemoved && _cacheManager != null)
                 {
                     if (region == null)
                         ((BaseCacheManager<object>)_cacheManager).Backplane.NotifyRemove(cacheKey);

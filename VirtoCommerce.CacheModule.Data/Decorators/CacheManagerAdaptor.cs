@@ -35,7 +35,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
                 }
                 else
                 {
-                    return _cacheManager.Get(cacheKey, region, GetExpirationTimeout(), getValueFunction);
+                    return _cacheManager.Get(cacheKey, region, GetExpirationTimeout(region), GetExpirationMode(region), getValueFunction, true);
                 }
             }
             return getValueFunction();
@@ -56,8 +56,8 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
         {
             if (_settingManager.GetValue("Cache.Enable", true) && !CacheSkipper.CurrentValue.SkipCacheWrite)
             {
-                var item = new CacheItem<object>(cacheKey, region, value, GetExpirationMode(), GetExpirationTimeout());
-                _cacheManager.Put(cacheKey, value, region);
+                var item = new CacheItem<object>(cacheKey, region, value, GetExpirationMode(region), GetExpirationTimeout(region));
+                _cacheManager.Put(item);
             }
         }
 
@@ -138,7 +138,7 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
 
                     var cacheKey = cacheKeyGen(id);
                     if (!CacheSkipper.CurrentValue.SkipCacheWrite)
-                        _cacheManager.Put(new CacheItem<object>(cacheKey, region, fetchedInfo, GetExpirationMode(), GetExpirationTimeout()));
+                        _cacheManager.Put(new CacheItem<object>(cacheKey, region, fetchedInfo, GetExpirationMode(region), GetExpirationTimeout(region)));
 
                     withCacheInfo[id] = new
                     {
@@ -153,14 +153,52 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             return ids.Select(x => withCacheInfo[x].cached).Where(x => x != null).ToArray();
         }
 
-        private TimeSpan GetExpirationTimeout()
+        private TimeSpan GetExpirationTimeout(string region = null)
         {
-            return TimeSpan.FromSeconds(_settingManager.GetValue("Cache.ExpirationTimeout", 60));
+            // E.g. Cache.Catalog-Individual-Cache-Region.ExpirationTimeout = 3600;
+            var seconds =
+                _settingManager.GetValue<int?>($"Cache.{region}.ExpirationTimeout", null) ??
+                _settingManager.GetValue<int?>("Cache.ExpirationTimeout", null);
+
+            return seconds.HasValue
+                ? TimeSpan.FromSeconds(seconds.Value) + GetExpirationTimeoutJitter(region)
+                : TimeSpan.Zero;
         }
 
-        private ExpirationMode GetExpirationMode()
+        private TimeSpan GetExpirationTimeoutJitter(string region = null)
         {
-            return ExpirationMode.Sliding;
+            var jitter =
+                _settingManager.GetValue<int?>($"Cache.{region}.ExpirationTimeoutJitter", null) ??
+                _settingManager.GetValue<int?>("Cache.ExpirationTimeoutJitter", null);
+
+            if (jitter.HasValue)
+            {
+                var random = new Random();
+                return TimeSpan.FromMinutes(random.Next(0, (int)jitter));
+            }
+
+            return TimeSpan.Zero;
+        }
+
+        private ExpirationMode GetExpirationMode(string region = null)
+
+        {
+            // E.g. Cache.Catalog-Individual-Cache-Region.ExpirationMode = Absolute
+            var value = _settingManager.GetValue<string>($"Cache.{region}.ExpirationMode", null) ??
+                        _settingManager.GetValue<string>("Cache.ExpirationMode", null);
+            if (value != null)
+            {
+                if (string.Equals(value, "None", StringComparison.OrdinalIgnoreCase))
+                    return ExpirationMode.None;
+
+                if (string.Equals(value, "Sliding", StringComparison.OrdinalIgnoreCase))
+                    return ExpirationMode.Sliding;
+
+                if (string.Equals(value, "Absolute", StringComparison.OrdinalIgnoreCase))
+                    return ExpirationMode.Absolute;
+            }
+
+            return default(ExpirationMode);
         }
     }
 }

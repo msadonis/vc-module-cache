@@ -46,11 +46,25 @@
                 <description>For the following domain services: Catalog, Store, Customer, Marketing, SEO</description>
             </setting>
             <setting>
+                <name>Cache.ExpirationMode</name>
+                <valueType>string</valueType>
+                <defaultValue>Sliding</defaultValue>
+                <title>Сache default expiration mode</title>
+                <description>Possible values are: None, Sliding, Absolute</description>
+            </setting>
+            <setting>
                 <name>Cache.ExpirationTimeout</name>
                 <valueType>integer</valueType>
                 <defaultValue>60</defaultValue>
-                <title>Сache sliding expiration timeout (seconds)</title>
+                <title>Сache default expiration timeout (seconds)</title>
                 <description>Change this setting to balance memory usage (low timeout - low memory usage, hight - hight memory usage)</description>
+            </setting>
+            <setting>
+                <name>Cache.ExpirationTimeoutJitter</name>
+                <valueType>integer</valueType>
+                <defaultValue>10</defaultValue>
+                <title>Сache expiration timeout jitter (minutes)</title>
+                <description>Change this setting to provide a random value betweed 0 and jitter to add to the expiration timeout</description>
             </setting>
         </group>
     </settings>

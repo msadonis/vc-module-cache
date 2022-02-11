@@ -62,8 +62,8 @@
             <setting>
                 <name>Cache.ExpirationTimeoutJitter</name>
                 <valueType>integer</valueType>
-                <defaultValue>10</defaultValue>
-                <title>Сache expiration timeout jitter (minutes)</title>
+                <defaultValue>600</defaultValue>
+                <title>Сache expiration timeout jitter (seconds)</title>
                 <description>Change this setting to provide a random value betweed 0 and jitter to add to the expiration timeout</description>
             </setting>
         </group>

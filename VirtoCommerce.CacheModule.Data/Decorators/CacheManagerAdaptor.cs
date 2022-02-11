@@ -9,6 +9,9 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
 {
     public sealed class CacheManagerAdaptor
     {
+        private static readonly Random random = new Random();
+        private static readonly object syncLock = new object();
+
         private readonly ICacheManager<object> _cacheManager;
         private readonly ISettingsManager _settingManager;
 
@@ -174,10 +177,18 @@ namespace VirtoCommerce.CacheModule.Data.Decorators
             if (jitter.HasValue)
             {
                 var random = new Random();
-                return TimeSpan.FromMinutes(random.Next(0, (int)jitter));
+                return TimeSpan.FromSeconds(RandomNumber(0, (int)jitter));
             }
 
             return TimeSpan.Zero;
+        }
+
+        private static int RandomNumber(int min, int max)
+        {
+            lock (syncLock)
+            { // synchronize
+                return random.Next(min, max);
+            }
         }
 
         private ExpirationMode GetExpirationMode(string region = null)
